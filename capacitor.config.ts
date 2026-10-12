@@ -1,4 +1,5 @@
 import type { CapacitorConfig } from "@capacitor/cli";
+
 const config: CapacitorConfig = {
   appId: "com.novastudio.p",
   appName: "p",
@@ -13,4 +14,5 @@ const config: CapacitorConfig = {
     backgroundColor: "#ffffff",
   },
 };
+
 export default config;

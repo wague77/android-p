@@ -41,7 +41,7 @@ export function formatDateJJMMAAAA(date: Date): string {
 }
 
 export function parseInputDate(value: string | null | undefined): Date {
-  const raw = String(value || "");
+  const raw = String(value ?? "");
   const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return new Date();
   const y = Number(match[1]);
@@ -126,14 +126,14 @@ export function paysLabel(reunion: Reunion | null | undefined): string {
 }
 
 export function cleanPariCode(code: string | undefined | null): string {
-  return String(code || "")
+  return String(code ?? "")
     .replace(/^E_/i, "")
     .replace(/_/g, " ")
     .trim();
 }
 
 export function pariLabel(code: string | undefined | null): string {
-  const raw = String(code || "");
+  const raw = String(code ?? "");
   const key = raw.toUpperCase().replace(/\s+/g, "_");
   const map: Record<string, string> = {
     SIMPLE_GAGNANT: "Simple gagnant",
@@ -171,7 +171,7 @@ export function pariLabel(code: string | undefined | null): string {
 }
 
 export function horsesForPari(code: string | undefined | null): number {
-  const key = String(code || "")
+  const key = String(code ?? "")
     .toUpperCase()
     .replace(/\s+/g, "_");
   if (!key) return 0;
@@ -220,7 +220,7 @@ export function uniqueParis(paris: Pari[] | undefined | null): { code: string; l
 }
 
 export function isNonPartant(p: Participant | null | undefined): boolean {
-  const s = String(p?.statut || "").toUpperCase();
+  const s = String(p?.statut ?? "").toUpperCase();
   return (
     s.indexOf("NON_PARTANT") >= 0 ||
     s === "NP" ||
@@ -247,11 +247,11 @@ export function formatCote(value: number | string | undefined | null): string {
 }
 
 export function sexeLabel(sexe: string | undefined | null): string {
-  const s = String(sexe || "").toUpperCase();
+  const s = String(sexe ?? "").toUpperCase();
   if (s === "H" || s === "HONGRE") return "Hongre";
   if (s === "M" || s === "MALE") return "Mâle";
   if (s === "F" || s === "FEMELLE") return "Femelle";
-  return String(sexe || "");
+  return String(sexe ?? "");
 }
 
 function extractReunions(payload: ProgrammeResponse | Reunion[] | null | undefined): Reunion[] {
@@ -260,52 +260,76 @@ function extractReunions(payload: ProgrammeResponse | Reunion[] | null | undefin
   return Array.isArray(list) ? list : [];
 }
 
+function isAbsoluteHttp(value: string): boolean {
+  return value.indexOf("https://") === 0 || value.indexOf("http://") === 0;
+}
+
 function pmuUrl(path: string): string {
-  const clean = String(path || "").replace(/^\/+/, "");
+  const clean = String(path ?? "")
+    .replace(/^\/+/, "")
+    .split("?")[0]
+    .split("#")[0];
   if (!/^\d{8}(?:\/R\d+\/C\d+\/[a-z0-9-]+)?$/i.test(clean)) {
     throw new Error("Adresse PMU invalide. Actualisez le programme.");
   }
   return "https://" + HOST + PREFIX + clean;
 }
 
+function readableError(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? String(err.message ?? "") : String(err ?? "");
+  if (/invalid url|failed to construct/i.test(message)) {
+    return "Le service PMU n'a pas accepté l'adresse demandée. Réessayez.";
+  }
+  return message || fallback;
+}
+
 async function novaFetchJson<T>(path: string): Promise<T> {
   const href = pmuUrl(path);
-  const novaFetch = (window as any).nova?.fetch;
-  
+  if (!isAbsoluteHttp(href) || href.indexOf(" ") >= 0) {
+    throw new Error("Adresse PMU invalide. Actualisez le programme.");
+  }
+  const novaFetch = window.nova && typeof window.nova.fetch === "function" ? window.nova.fetch : null;
+  if (!novaFetch) {
+    throw new Error(
+      "Le connecteur PMU n'est pas disponible dans cet aperçu. Rechargez la page depuis l'atelier NOVA."
+    );
+  }
   let res: Response;
   try {
-    if (typeof novaFetch === "function") {
-      // Sur Lovable
-      res = await novaFetch(href, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-      });
-    } else {
-      // Sur Android et Web normal - FALLBACK
-      res = await fetch(href, {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-    }
+    res = await novaFetch(href, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
   } catch (err) {
-    throw new Error("Impossible de joindre le programme PMU. Vérifiez la connexion.");
+    throw new Error(readableError(err, "Connexion au service PMU impossible."));
   }
-
-  if (!res.ok) {
-    throw new Error(`PMU ${res.status}: ${res.statusText}`);
+  if (!res || !res.ok) {
+    const status = res && typeof res.status === "number" ? String(res.status) : "erreur";
+    throw new Error("Le service PMU a répondu " + status + ". Réessayez dans un instant.");
   }
-  return (await res.json()) as T;
+  let text = "";
+  try {
+    text = await res.text();
+  } catch {
+    throw new Error("Réponse PMU illisible. Réessayez.");
+  }
+  if (!text) throw new Error("Réponse vide du service PMU.");
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error("Réponse PMU illisible. Réessayez.");
+  }
 }
 
 function coursePath(date: Date, reunion: number, course: number, leaf: string): string {
   const stamp = formatDateJJMMAAAA(date);
   const r = Math.trunc(Number(reunion));
   const c = Math.trunc(Number(course));
-  if (!Number.isFinite(r) || !Number.isFinite(c) || r <= 0 || c <= 0) {
+  const safeLeaf = String(leaf ?? "").replace(/[^a-z0-9-]/gi, "");
+  if (!Number.isFinite(r) || !Number.isFinite(c) || r <= 0 || c <= 0 || !safeLeaf) {
     throw new Error("Numéro de réunion ou de course invalide.");
   }
-  return stamp + "/R" + String(r) + "/C" + String(c) + "/" + leaf;
+  return stamp + "/R" + String(r) + "/C" + String(c) + "/" + safeLeaf;
 }
 
 export async function fetchProgramme(date: Date): Promise<Reunion[]> {
@@ -353,7 +377,7 @@ export function courseCount(reunions: Reunion[] | null | undefined): number {
 }
 
 export function disciplineLabel(course: Course | null | undefined): string {
-  const d = String(course?.discipline || "").toUpperCase();
+  const d = String(course?.discipline ?? "").toUpperCase();
   if (!d) return "Course";
   if (d.indexOf("ATTELE") >= 0) return "Attelé";
   if (d.indexOf("MONTE") >= 0) return "Monté";

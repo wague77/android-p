@@ -38,8 +38,11 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 
   static getDerivedStateFromError(error: unknown) {
-    const message = error instanceof Error ? String(error.message || "") : "Erreur inattendue";
-    return { message: message || "L'aperçu a rencontré une erreur." };
+    const raw = error instanceof Error ? String(error.message || "") : String(error ?? "");
+    if (/invalid url|failed to construct/i.test(raw)) {
+      return { message: "Connexion au programme PMU impossible pour le moment. Rechargez l'aperçu." };
+    }
+    return { message: raw || "L'aperçu a rencontré une erreur." };
   }
 
   render() {
@@ -82,7 +85,7 @@ function Shell() {
   const [selection, setSelection] = useState<Selection>(readSelection);
 
   const selectCourse = useCallback((reunion: number, course: number) => {
-    const next = { reunion: Number(reunion), course: Number(course) };
+    const next = { reunion: Number(reunion) || 0, course: Number(course) || 0 };
     setSelection(next);
     try {
       localStorage.setItem(SELECTION_KEY, JSON.stringify(next));
@@ -93,7 +96,7 @@ function Shell() {
 
   const openFavorite = useCallback(
     (favDate: string, reunion: number, course: number) => {
-      onDateChange(String(favDate || ""));
+      onDateChange(String(favDate ?? ""));
       selectCourse(reunion, course);
     },
     [onDateChange, selectCourse]
@@ -111,8 +114,8 @@ function Shell() {
       } catch (err) {
         if (cancelled) return;
         setReunions([]);
-        const message = err instanceof Error ? String(err.message || "") : "";
-        setError(message || "Impossible de joindre le programme PMU. Vérifiez la connexion puis actualisez.");
+        const raw = err instanceof Error ? String(err.message ?? "") : String(err ?? "");
+        setError(raw || "Impossible de joindre le programme PMU. Vérifiez la connexion puis actualisez.");
       } finally {
         if (!cancelled) setLoading(false);
       }
