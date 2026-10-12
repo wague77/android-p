@@ -31,9 +31,11 @@ jobs:
           npm install --no-audit --no-fund
           npm install --no-audit --no-fund @capacitor/core@^7 @capacitor/cli@^7 @capacitor/android@^7
 
-      - name: Build web app (dist)
-        run: |
-          npm run build
+          - name: Build web app (dist)
+    env:
+      BUILD_TARGET: capacitor
+    run: |
+      npm run build
           node scripts/prepare-mobile-build.js
           echo "Taille du build web :"; du -sh dist
 
