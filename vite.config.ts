@@ -1,11 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import legacy from '@vitejs/plugin-legacy';
-// Pour Vercel on met '/', pour Capacitor on met './'
-const isCapacitor = process.env.BUILD_TARGET === 'capacitor';
+
+// legacy() : code compatible avec les anciens navigateurs Android (WebView Chrome 49+).
 export default defineConfig({
   plugins: [react(), legacy({ targets: ['android >= 5', 'chrome >= 49'] })],
-  base: isCapacitor ? './' : '/',
+  base: './',
   build: {
     outDir: 'dist',
     emptyOutDir: true,
