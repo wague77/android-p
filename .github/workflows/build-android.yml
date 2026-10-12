@@ -1,0 +1,97 @@
+name: Build Android APK and AAB
+
+on:
+  push:
+    branches: ["main", "master", "principal"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK and AAB
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Seul setup-java est utilisé : le SDK Android est déjà installé sur ubuntu-latest ($ANDROID_HOME).
+      - name: Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies (+ Capacitor)
+        run: |
+          npm install --no-audit --no-fund
+          npm install --no-audit --no-fund @capacitor/core@^7 @capacitor/cli@^7 @capacitor/android@^7
+
+      - name: Build web app (dist)
+        run: |
+          npm run build
+          node scripts/prepare-mobile-build.js
+          echo "Taille du build web :"; du -sh dist
+
+      - name: Create native Capacitor project (cap add / copy / sync)
+        run: |
+          # L'ancien dossier android/ (WebView file://) affiche une page blanche : on le régénère avec Capacitor.
+          if [ -d android ] && [ ! -d android/capacitor-cordova-android-plugins ]; then
+            mkdir -p .custom-res && cp -r android/app/src/main/res .custom-res/ 2>/dev/null || true
+            rm -rf android
+          fi
+          [ -d android ] || npx cap add android
+          # Compatibilité maximale : Android 6.0 (API 23, minimum de Capacitor 7) jusqu'à Android 15+ (API 35).
+          sed -i -E 's/minSdkVersion = [0-9]+/minSdkVersion = 23/; s/compileSdkVersion = [0-9]+/compileSdkVersion = 35/; s/targetSdkVersion = [0-9]+/targetSdkVersion = 35/' android/variables.gradle
+          grep -E 'SdkVersion' android/variables.gradle
+          rm -rf android/app/src/main/assets/public
+          npx cap copy android
+          npx cap sync android
+          if [ -d .custom-res/res ]; then
+            cp -r .custom-res/res/drawable* android/app/src/main/res/ 2>/dev/null || true
+            cp -r .custom-res/res/mipmap* android/app/src/main/res/ 2>/dev/null || true
+          fi
+          test -f android/app/src/main/assets/public/index.html || { echo "ERREUR : index.html absent des assets Android"; exit 1; }
+          ls android/app/src/main/assets/public/assets | head
+          echo "Taille des assets Android :"; du -sh android/app/src/main/assets/public
+
+      - name: Keep the same signing key between builds (avoids "package conflict" on update)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Signing keystore
+        run: |
+          keytool -genkeypair -v -keystore android/app/release.keystore -alias release-key \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass nova2026pass -keypass nova2026pass \
+            -dname "CN=NOVA Mobile, OU=Mobile, O=NOVA Studio, L=Paris, ST=IDF, C=FR"
+
+      - name: Build APK (debug, installable) and AAB (release)
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug bundleRelease --no-daemon --stacktrace
+          jarsigner -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore app/release.keystore -storepass nova2026pass -keypass nova2026pass \
+            app/build/outputs/bundle/release/app-release.aab release-key
+          ls -lh app/build/outputs/apk/debug/*.apk app/build/outputs/bundle/release/*.aab
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
