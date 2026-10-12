@@ -1,13 +1,15 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import legacy from '@vitejs/plugin-legacy';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
-// legacy() : code compatible avec les anciens navigateurs Android (WebView Chrome 49+).
 export default defineConfig({
-  plugins: [react(), legacy({ targets: ['android >= 5', 'chrome >= 49'] })],
-  base: './',
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  server: {
+    port: 8080,
   },
 });
