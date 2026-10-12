@@ -1,10 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import legacy from '@vitejs/plugin-legacy';
-
-// legacy() : code compatible avec les anciens navigateurs Android (WebView Chrome 49+).
 export default defineConfig({
-  plugins: [react(), legacy({ targets: ['android >= 5', 'chrome >= 49'] })],
+  plugins: [react()],
   base: './',
   build: {
     outDir: 'dist',
