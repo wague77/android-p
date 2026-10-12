@@ -270,35 +270,32 @@ function pmuUrl(path: string): string {
 
 async function novaFetchJson<T>(path: string): Promise<T> {
   const href = pmuUrl(path);
-  const novaFetch = window.nova && window.nova.fetch;
-  if (typeof novaFetch !== "function") {
-    throw new Error(
-      "Le connecteur PMU n'est pas disponible dans cet aperçu. Rechargez la page ou ouvrez l'application depuis l'atelier NOVA."
-    );
-  }
+  const novaFetch = (window as any).nova?.fetch;
+  
   let res: Response;
   try {
-    res = await novaFetch(href, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? String(err.message || "") : "";
-    if (/invalid url/i.test(message)) {
-      throw new Error("Le service PMU a refusé l'adresse demandée. Réessayez.");
+    if (typeof novaFetch === "function") {
+      // Sur Lovable
+      res = await novaFetch(href, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+    } else {
+      // Sur Android et Web normal - FALLBACK
+      res = await fetch(href, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
     }
-    throw new Error(message || "Connexion au service PMU impossible.");
+  } catch (err) {
+    throw new Error("Impossible de joindre le programme PMU. Vérifiez la connexion.");
   }
-  if (!res || !res.ok) {
-    throw new Error("Le service PMU a répondu " + String(res && res.status ? res.status : "erreur") + ". Réessayez dans un instant.");
+
+  if (!res.ok) {
+    throw new Error(`PMU ${res.status}: ${res.statusText}`);
   }
-  const text = await res.text();
-  if (!text) throw new Error("Réponse vide du service PMU.");
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error("Réponse PMU illisible. Réessayez.");
-  }
+  return (await res.json()) as T;
 }
 
 function coursePath(date: Date, reunion: number, course: number, leaf: string): string {
