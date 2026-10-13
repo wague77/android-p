@@ -24,8 +24,8 @@ declare global {
   }
 }
 
-const HOST = "offline.turfinfo.api.pmu.fr";
-const PREFIX = "/rest/client/7/programme/";
+const PMU_HOST = "offline.turfinfo.api.pmu.fr";
+const PMU_PREFIX = "/rest/client/7/programme/";
 
 function safeDate(input: Date | null | undefined): Date {
   if (input instanceof Date && !Number.isNaN(input.getTime())) return input;
@@ -260,11 +260,7 @@ function extractReunions(payload: ProgrammeResponse | Reunion[] | null | undefin
   return Array.isArray(list) ? list : [];
 }
 
-function isAbsoluteHttp(value: string): boolean {
-  return value.indexOf("https://") === 0 || value.indexOf("http://") === 0;
-}
-
-function pmuUrl(path: string): string {
+function pmuHref(path: string): string {
   const clean = String(path ?? "")
     .replace(/^\/+/, "")
     .split("?")[0]
@@ -272,46 +268,51 @@ function pmuUrl(path: string): string {
   if (!/^\d{8}(?:\/R\d+\/C\d+\/[a-z0-9-]+)?$/i.test(clean)) {
     throw new Error("Adresse PMU invalide. Actualisez le programme.");
   }
-  return "https://" + HOST + PREFIX + clean;
+  return "https://" + PMU_HOST + PMU_PREFIX + clean;
 }
 
 function readableError(err: unknown, fallback: string): string {
   const message = err instanceof Error ? String(err.message ?? "") : String(err ?? "");
+  if (/connexion requise|v[ée]rification impossible/i.test(message)) {
+    return "Le site publié bloque encore l'accès. Rechargez la page : le programme doit s'ouvrir sans vérification.";
+  }
   if (/invalid url|failed to construct/i.test(message)) {
-    return "Le service PMU n'a pas accepté l'adresse demandée. Réessayez.";
+    return "Connexion au service PMU impossible. L'adresse demandée a été refusée. Réessayez.";
+  }
+  if (/failed to fetch|network|load failed|cors/i.test(message)) {
+    return "Connexion au service PMU impossible depuis ce site. Ouvrez l'application dans l'atelier NOVA, ou touchez Actualiser.";
   }
   return message || fallback;
 }
 
-async function novaFetchJson<T>(path: string): Promise<T> {
-  const href = pmuUrl(path);
-  if (!isAbsoluteHttp(href) || href.indexOf(" ") >= 0) {
-    throw new Error("Adresse PMU invalide. Actualisez le programme.");
+async function readBody(res: Response): Promise<string> {
+  try {
+    return await res.text();
+  } catch {
+    return "";
   }
-  const novaFetch = window.nova && typeof window.nova.fetch === "function" ? window.nova.fetch : null;
-  if (!novaFetch) {
-    throw new Error(
-      "Le connecteur PMU n'est pas disponible dans cet aperçu. Rechargez la page depuis l'atelier NOVA."
-    );
-  }
+}
+
+async function requestJson<T>(path: string): Promise<T> {
+  const href = pmuHref(path);
+  const novaFetch = window.nova && typeof window.nova.fetch === "function" ? window.nova.fetch.bind(window.nova) : null;
+  const requester = novaFetch || window.fetch.bind(window);
   let res: Response;
   try {
-    res = await novaFetch(href, {
+    res = await requester(href, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
   } catch (err) {
     throw new Error(readableError(err, "Connexion au service PMU impossible."));
   }
+  const text = await readBody(res);
+  if (/connexion requise|v[ée]rification impossible/i.test(text) && text.length < 4000) {
+    throw new Error("Le site publié demande encore une vérification. Rechargez la page.");
+  }
   if (!res || !res.ok) {
     const status = res && typeof res.status === "number" ? String(res.status) : "erreur";
-    throw new Error("Le service PMU a répondu " + status + ". Réessayez dans un instant.");
-  }
-  let text = "";
-  try {
-    text = await res.text();
-  } catch {
-    throw new Error("Réponse PMU illisible. Réessayez.");
+    throw new Error(`Le service PMU a répondu ${status}. Réessayez dans un instant.`);
   }
   if (!text) throw new Error("Réponse vide du service PMU.");
   try {
@@ -329,12 +330,12 @@ function coursePath(date: Date, reunion: number, course: number, leaf: string): 
   if (!Number.isFinite(r) || !Number.isFinite(c) || r <= 0 || c <= 0 || !safeLeaf) {
     throw new Error("Numéro de réunion ou de course invalide.");
   }
-  return stamp + "/R" + String(r) + "/C" + String(c) + "/" + safeLeaf;
+  return `${stamp}/R${String(r)}/C${String(c)}/${safeLeaf}`;
 }
 
 export async function fetchProgramme(date: Date): Promise<Reunion[]> {
   const stamp = formatDateJJMMAAAA(date);
-  const data = await novaFetchJson<ProgrammeResponse>(stamp);
+  const data = await requestJson<ProgrammeResponse>(stamp);
   const reunions = extractReunions(data)
     .filter((item) => item && typeof item === "object")
     .sort((a, b) => (Number(a?.numOfficiel) || 0) - (Number(b?.numOfficiel) || 0));
@@ -347,25 +348,19 @@ export async function fetchProgramme(date: Date): Promise<Reunion[]> {
 }
 
 export async function fetchParticipants(date: Date, reunion: number, course: number): Promise<Participant[]> {
-  const data = await novaFetchJson<ParticipantsResponse | Participant[]>(
-    coursePath(date, reunion, course, "participants")
-  );
+  const data = await requestJson<ParticipantsResponse | Participant[]>(coursePath(date, reunion, course, "participants"));
   const list = Array.isArray(data) ? data : data?.participants || [];
   return Array.isArray(list) ? list : [];
 }
 
 export async function fetchPronostics(date: Date, reunion: number, course: number): Promise<SelectionItem[]> {
-  const data = await novaFetchJson<PronosticsResponse | SelectionItem[]>(
-    coursePath(date, reunion, course, "pronostics")
-  );
+  const data = await requestJson<PronosticsResponse | SelectionItem[]>(coursePath(date, reunion, course, "pronostics"));
   const list = Array.isArray(data) ? data : data?.selection || [];
   return Array.isArray(list) ? [...list].sort((a, b) => (Number(a?.rang) || 99) - (Number(b?.rang) || 99)) : [];
 }
 
 export async function fetchCommentaire(date: Date, reunion: number, course: number): Promise<string> {
-  const data = await novaFetchJson<PronosticsDetaillesResponse>(
-    coursePath(date, reunion, course, "pronostics-detailles")
-  );
+  const data = await requestJson<PronosticsDetaillesResponse>(coursePath(date, reunion, course, "pronostics-detailles"));
   if (!data) return "";
   if (typeof data.commentaire === "string") return String(data.commentaire);
   return String(data.commentaire?.texte || "");
