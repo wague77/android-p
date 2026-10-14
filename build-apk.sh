@@ -8,19 +8,20 @@ echo "==============================================="
 
 # 1. Compiler les assets web
 echo "📦 1/4 - Construction des fichiers web..."
-npm install || true
+npm install
 npm run build
 
-# 2. Copier les assets dans le projet Android
-echo "📂 2/4 - Copie des assets dans android/app/src/main/assets/public..."
-mkdir -p android/app/src/main/assets/public
-cp -r dist/* android/app/src/main/assets/public/ || cp -r build/* android/app/src/main/assets/public/ || true
+# 2. Générer le véritable projet Capacitor et appliquer la personnalisation
+node scripts/prepare-mobile-build.js
+[ -d android ] || npx cap add android
+npx cap sync android
+node scripts/prepare-native-android.js
 
 # 3. Compiler l'APK Android (Installation directe)
 echo "🤖 3/4 - Compilation de l'APK (assembleRelease)..."
 cd android
-chmod +x ./gradlew || true
-./gradlew assembleRelease --stacktrace
+chmod +x ./gradlew
+./gradlew assembleDebug --stacktrace
 
 # 4. Compiler l'AAB Google Play Store
 echo "💎 4/4 - Compilation de l'AAB pour Google Play Store (bundleRelease)..."

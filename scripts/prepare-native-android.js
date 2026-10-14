@@ -1,0 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+const config = JSON.parse(fs.readFileSync(".nova/mobile-config.json", "utf8"));
+fs.cpSync(".nova/android-res", "android/app/src/main/res", { recursive: true });
+fs.copyFileSync(".nova/AndroidManifest.xml", "android/app/src/main/AndroidManifest.xml");
+const javaDir = path.join("android/app/src/main/java", ...config.appId.split("."));
+fs.mkdirSync(javaDir, { recursive: true });
+fs.copyFileSync(".nova/MainActivity.java", path.join(javaDir, "MainActivity.java"));
+const gradle = "android/app/build.gradle";
+let source = fs.readFileSync(gradle, "utf8");
+source = source.replace(/versionCode\s+\d+/, "versionCode " + config.versionCode).replace(/versionName\s+"[^"\n]*"/, "versionName " + JSON.stringify(config.versionName));
+fs.writeFileSync(gradle, source);
+console.log("Android customization applied: " + config.appId);

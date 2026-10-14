@@ -21,10 +21,10 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Node.js 20
+      - name: Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies (+ Capacitor)
         run: |
@@ -51,6 +51,7 @@ jobs:
           rm -rf android/app/src/main/assets/public
           npx cap copy android
           npx cap sync android
+          node scripts/prepare-native-android.js
           if [ -d .custom-res/res ]; then
             cp -r .custom-res/res/drawable* android/app/src/main/res/ 2>/dev/null || true
             cp -r .custom-res/res/mipmap* android/app/src/main/res/ 2>/dev/null || true
