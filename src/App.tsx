@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
+import ApprovalGate from "./components/ApprovalGate";
 import NavBar from "./components/NavBar";
-import { AppRoutes, HashNav } from "./lib/nav";
+import { AppRoutes, HashNav, useNav } from "./lib/nav";
 import { fetchProgramme } from "./lib/pmu";
 import type { Reunion } from "./lib/types";
+import AdminPage from "./pages/AdminPage";
 import AidePage from "./pages/AidePage";
 import FavorisPage from "./pages/FavorisPage";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -67,9 +69,19 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <HashNav>
-        <Shell />
+        <Gate />
       </HashNav>
     </AppErrorBoundary>
+  );
+}
+
+function Gate() {
+  const { path } = useNav();
+  if (path === "/admin") return <AdminPage />;
+  return (
+    <ApprovalGate>
+      <Shell />
+    </ApprovalGate>
   );
 }
 
