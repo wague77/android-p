@@ -8,6 +8,7 @@ import type { Reunion } from "./lib/types";
 import AdminPage from "./pages/AdminPage";
 import AidePage from "./pages/AidePage";
 import FavorisPage from "./pages/FavorisPage";
+import HistoriquePage from "./pages/HistoriquePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import PartantsPage from "./pages/PartantsPage";
 import ProgrammePage, { useProgrammeDate } from "./pages/ProgrammePage";
@@ -174,6 +175,12 @@ function Shell() {
                   selectedCourse={selection.course}
                   onSelect={selectCourse}
                 />
+              ),
+            },
+            {
+              path: "/historique",
+              element: (
+                <HistoriquePage reunions={safeReunions} dateValue={dateValue} loadingProgramme={loading} />
               ),
             },
             { path: "/favoris", element: <FavorisPage onOpen={openFavorite} /> },
