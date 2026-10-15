@@ -60,6 +60,13 @@ function start() {
   }
 }
 
+window.addEventListener("error", (event) => {
+  const text = String(event?.message || "");
+  if (text.indexOf("Invalid URL") >= 0) {
+    event.preventDefault();
+  }
+});
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", start);
 } else {

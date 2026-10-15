@@ -55,8 +55,24 @@ async function build() {
   try {
     await vite.build({
       root,
-      configFile: join(root, "vite.config.ts"),
+      configFile: false,
       base: "./",
+      plugins: [reactPlugin()],
+      build: {
+        outDir: dist,
+        emptyOutDir: true,
+        assetsDir: "assets",
+        cssCodeSplit: false,
+        rollupOptions: {
+          input: join(root, "index.html"),
+          output: {
+            format: "es",
+            inlineDynamicImports: true,
+            entryFileNames: "assets/index.js",
+            assetFileNames: "assets/[name][extname]",
+          },
+        },
+      },
     });
   } catch (error) {
     console.error("ERREUR : le build Vite a échoué.");
@@ -66,19 +82,28 @@ async function build() {
 
   if (!existsSync(assets)) mkdirSync(assets, { recursive: true });
   const jsPaths = walkJs(dist, []).filter((file) => safeSize(file) > 200);
-  const entry = jsPaths.find((file) => file.split(/[/\\\\]/).pop() === "index.js") || jsPaths.sort((a, b) => safeSize(b) - safeSize(a))[0];
-  if (!entry) {
+  const preferred =
+    jsPaths.find((file) => String(file).replace(/\\/g, "/").endsWith("/assets/index.js")) ||
+    jsPaths.find((file) => file.split(/[/\\]/).pop() === "index.js") ||
+    jsPaths.sort((a, b) => safeSize(b) - safeSize(a))[0];
+
+  if (!preferred) {
     console.error("ERREUR : aucun fichier JavaScript dans dist/assets — interface absente.");
     process.exit(1);
   }
+
   const indexJs = join(assets, "index.js");
-  if (entry !== indexJs) writeFileSync(indexJs, readFileSync(entry));
+  if (preferred !== indexJs) {
+    writeFileSync(indexJs, readFileSync(preferred));
+  }
   if (safeSize(indexJs) < 200) {
     console.error("ERREUR : aucun fichier JavaScript dans dist/assets — interface absente.");
     process.exit(1);
   }
 
-  const cssName = existsSync(assets) ? readdirSync(assets).find((name) => name.endsWith(".css")) || "" : "";
+  const cssName = existsSync(assets)
+    ? readdirSync(assets).find((name) => String(name).endsWith(".css")) || ""
+    : "";
   const cssLink = cssName ? `    <link rel="stylesheet" href="./assets/${cssName}" />\n` : "";
   const html = `<!DOCTYPE html>
 <html lang="fr">

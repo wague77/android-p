@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
+import ApprovalGate from "./components/ApprovalGate";
 import NavBar from "./components/NavBar";
 import { AppRoutes, HashNav } from "./lib/nav";
 import { fetchProgramme } from "./lib/pmu";
@@ -8,6 +9,7 @@ import AdminPage from "./pages/AdminPage";
 import AidePage from "./pages/AidePage";
 import FavorisPage from "./pages/FavorisPage";
 import HistoriquePage from "./pages/HistoriquePage";
+import MobileApkPage from "./pages/MobileApkPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import PartantsPage from "./pages/PartantsPage";
 import ProgrammePage, { useProgrammeDate } from "./pages/ProgrammePage";
@@ -50,7 +52,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
         <div className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-3 bg-[#04180f] px-6 pb-28 text-center text-emerald-50">
           <AlertTriangle className="h-8 w-8 text-amber-300" />
           <h1 className="text-xl font-black">Partants PMU</h1>
-          <p className="text-sm text-emerald-100/80">{this.state.message}</p>
+          <p className="text-sm text-emerald-100/80">{String(this.state.message || "")}</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -70,7 +72,9 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <HashNav>
-        <Shell />
+        <ApprovalGate>
+          <Shell />
+        </ApprovalGate>
       </HashNav>
     </AppErrorBoundary>
   );
@@ -113,7 +117,7 @@ function Shell() {
         const safe = Array.isArray(list) ? list : [];
         setReunions(safe);
         if (safe.length === 0) {
-          setError("Aucune réunion n'est publiée pour cette date. Choisissez un autre jour ou touchez Réessayer.");
+          setError("Aucune réunion publiée pour cette date. Choisissez un autre jour ou touchez Réessayer.");
         }
       } catch (err) {
         if (cancelled) return;
@@ -176,6 +180,7 @@ function Shell() {
               element: <HistoriquePage reunions={safeReunions} dateValue={dateValue} loadingProgramme={loading} />,
             },
             { path: "/favoris", element: <FavorisPage onOpen={openFavorite} /> },
+            { path: "/mobile", element: <MobileApkPage reunions={safeReunions} /> },
             { path: "/aide", element: <AidePage /> },
             { path: "/admin", element: <AdminPage /> },
             { path: "*", element: <NotFoundPage /> },

@@ -14,7 +14,7 @@ import {
 } from "./pmu";
 import type { ArriveeEntry, Course, Participant, Reunion, SelectionItem } from "./types";
 
-export type HistoryRange = "1m" | "3m" | "1y";
+export type HistoryRange = "1m" | "3m" | "1y" | "5y";
 
 export const PRONO_TOP = 8;
 
@@ -69,11 +69,17 @@ export interface HistoryReport {
   } | null;
 }
 
-const RANGE_DAYS: Record<HistoryRange, number> = { "1m": 31, "3m": 92, "1y": 366 };
+export const RANGE_DAYS: Record<HistoryRange, number> = {
+  "1m": 31,
+  "3m": 92,
+  "1y": 366,
+  "5y": 1827,
+};
 
 export function rangeLabel(range: HistoryRange): string {
   if (range === "1m") return "1 mois";
   if (range === "3m") return "3 mois";
+  if (range === "5y") return "5 ans";
   return "1 an";
 }
 

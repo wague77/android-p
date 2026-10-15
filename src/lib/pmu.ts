@@ -26,7 +26,12 @@ declare global {
   }
 }
 
-const CACHE_KEY = "partants-pmu-cache-v3";
+const CACHE_KEY = "partants-pmu-cache-v5";
+const PMU_BASES = [
+  "https://offline.turfinfo.api.pmu.fr/rest/client/7/programme/",
+  "https://online.turfinfo.api.pmu.fr/rest/client/7/programme/",
+  "https://online.turfinfo.api.pmu.fr/rest/client/1/programme/",
+];
 
 function safeDate(input: Date | null | undefined): Date {
   if (input instanceof Date && !Number.isNaN(input.getTime())) return input;
@@ -111,7 +116,9 @@ export function formatHeure(value: number | string | undefined | null): string {
 }
 
 export function hippodromeLabel(reunion: Reunion | null | undefined): string {
-  return String(reunion?.hippodrome?.libelleCourt || reunion?.hippodrome?.libelleLong || "Hippodrome").toUpperCase();
+  return String(
+    reunion?.hippodrome?.libelleCourt || reunion?.hippodrome?.libelleLong || "Hippodrome"
+  ).toUpperCase();
 }
 
 export function paysLabel(reunion: Reunion | null | undefined): string {
@@ -146,6 +153,7 @@ export function pariLabel(code: string | undefined | null): string {
     MULTI: "Multi",
     QUINTE_PLUS: "Quinté+",
     PICK5: "Pick 5",
+    PICK_5: "Pick 5",
   };
   if (map[key]) return map[key];
   if (!code) return "Jeu";
@@ -163,15 +171,24 @@ export function horsesForPari(code: string | undefined | null): number {
     .replace(/\s+/g, "_");
   if (!key) return 0;
   if (key.indexOf("SIMPLE_GAGNANT") >= 0 || key.indexOf("SIMPLE_PLACE") >= 0) return 1;
-  if (key.indexOf("COUPLE") >= 0 || key.indexOf("COUPL") >= 0 || key.indexOf("DEUX_SUR_QUATRE") >= 0 || key.indexOf("2SUR4") >= 0)
+  if (
+    key.indexOf("COUPLE") >= 0 ||
+    key.indexOf("COUPL") >= 0 ||
+    key.indexOf("DEUX_SUR_QUATRE") >= 0 ||
+    key.indexOf("2SUR4") >= 0 ||
+    key.indexOf("2_SUR_4") >= 0
+  ) {
     return 2;
+  }
   if (key.indexOf("TRIO") >= 0 || key.indexOf("TIERC") >= 0) return 3;
   if (key.indexOf("SUPER") >= 0 || key.indexOf("QUARTE") >= 0 || key.indexOf("MULTI") >= 0) return 4;
   if (key.indexOf("QUINTE") >= 0 || key.indexOf("PICK5") >= 0 || key.indexOf("PICK_5") >= 0) return 5;
   return 0;
 }
 
-export function uniqueParis(paris: Pari[] | undefined | null): { code: string; label: string; count: number }[] {
+export function uniqueParis(
+  paris: Pari[] | undefined | null
+): { code: string; label: string; count: number }[] {
   if (!Array.isArray(paris)) return [];
   const seen = new Set<string>();
   const out: { code: string; label: string; count: number }[] = [];
@@ -225,8 +242,14 @@ export function isCourseFinished(course: Course | null | undefined): boolean {
   if (!course) return false;
   if (course.arriveeDefinitive === true || course.isArriveeDefinitive === true) return true;
   const s = String(course.statut ?? "").toUpperCase();
-  if (s.indexOf("ARRIVEE") >= 0 || s.indexOf("FIN") >= 0 || s.indexOf("TERMIN") >= 0 || s.indexOf("OFFICIEL") >= 0)
+  if (
+    s.indexOf("ARRIVEE") >= 0 ||
+    s.indexOf("FIN") >= 0 ||
+    s.indexOf("TERMIN") >= 0 ||
+    s.indexOf("OFFICIEL") >= 0
+  ) {
     return true;
+  }
   return Array.isArray(course.ordreArrivee) && course.ordreArrivee.length > 0;
 }
 
@@ -303,27 +326,31 @@ export function cleanPath(path: string | null | undefined): string {
   return /^\d{8}(?:\/R\d+\/C\d+\/[a-z0-9-]+)?$/i.test(clean) ? clean : "";
 }
 
-function officialUrls(path: string): string[] {
-  const clean = cleanPath(path);
-  if (!clean) return [];
-  const stamp = clean.split("/")[0];
-  const rest = clean.indexOf("/") >= 0 ? clean.slice(stamp.length) : "";
-  const bases = [
-    "https://offline.turfinfo.api.pmu.fr/rest/client/7/programme/",
-    "https://online.turfinfo.api.pmu.fr/rest/client/7/programme/",
-    "https://online.turfinfo.api.pmu.fr/rest/client/61/programme/",
-    "https://online.turfinfo.api.pmu.fr/rest/client/1/programme/",
-  ];
-  const urls = bases.map((base) => base + clean);
-  if (!rest) {
-    urls.push("https://online.turfinfo.api.pmu.fr/rest/client/1/programme/" + stamp + "?specialisation=INTERNET");
-  }
-  return urls.filter((url, index) => urls.indexOf(url) === index);
-}
-
 function isHttpUrl(raw: string): boolean {
   const value = String(raw ?? "").trim();
   return value.indexOf("https://") === 0 || value.indexOf("http://") === 0;
+}
+
+function safeUrl(raw: string | null | undefined): string {
+  const value = String(raw ?? "").trim();
+  if (!isHttpUrl(value)) return "";
+  if (value.indexOf(" ") >= 0 || value.indexOf("\n") >= 0) return "";
+  return value;
+}
+
+function officialUrls(path: string): string[] {
+  const clean = cleanPath(path);
+  if (!clean) return [];
+  const urls = PMU_BASES.map((base) => safeUrl(base + clean)).filter(Boolean);
+  if (clean.indexOf("/") < 0) {
+    const extra = safeUrl(
+      "https://online.turfinfo.api.pmu.fr/rest/client/1/programme/" +
+        clean +
+        "?specialisation=INTERNET"
+    );
+    if (extra) urls.push(extra);
+  }
+  return urls.filter((url, index) => urls.indexOf(url) === index);
 }
 
 function sliceJson(text: string): string {
@@ -347,17 +374,19 @@ function asRecord(data: unknown): Record<string, unknown> | null {
 }
 
 function payloadScore(data: unknown): number {
-  if (Array.isArray(data)) return data.length > 0 ? 3 : 1;
+  if (Array.isArray(data)) return data.length > 0 ? 3 : 0;
   const row = asRecord(data);
   if (!row) return 0;
   if (row.offline === true && !row.programme && !row.reunions && !row.participants) return 0;
-  if (row.error && !row.programme && !row.reunions && !row.participants && !row.selection && !row.commentaire) return 0;
+  if (row.error && !row.programme && !row.reunions && !row.participants && !row.selection && !row.commentaire) {
+    return 0;
+  }
   const reunions = extractReunions(row as ProgrammeResponse);
   if (reunions.length > 0) return 3;
   if (Array.isArray(row.participants) && row.participants.length > 0) return 3;
   if (Array.isArray(row.selection) && row.selection.length > 0) return 3;
   if (row.commentaire) return 3;
-  if (row.programme || row.reunions || row.participants || row.selection) return 1;
+  if (Array.isArray(row.ordreArrivee) && row.ordreArrivee.length > 0) return 3;
   return 0;
 }
 
@@ -369,7 +398,9 @@ function unwrap(data: unknown): unknown {
     if (inner) return inner;
   }
   if (row.contents && typeof row.contents === "object") return unwrap(row.contents);
-  if (row.data && typeof row.data === "object" && payloadScore(row) < payloadScore(row.data)) return unwrap(row.data);
+  if (row.data && typeof row.data === "object" && payloadScore(row) < payloadScore(row.data)) {
+    return unwrap(row.data);
+  }
   return data;
 }
 
@@ -389,12 +420,12 @@ function waitForNova(): Promise<void> {
   if (typeof window.nova?.fetch === "function") return Promise.resolve();
   return new Promise((resolve) => {
     const started = Date.now();
-    const timer = setInterval(() => {
-      if (typeof window.nova?.fetch === "function" || Date.now() - started > 600) {
-        clearInterval(timer);
+    const timer = window.setInterval(() => {
+      if (typeof window.nova?.fetch === "function" || Date.now() - started > 500) {
+        window.clearInterval(timer);
         resolve();
       }
-    }, 60);
+    }, 40);
   });
 }
 
@@ -443,8 +474,8 @@ async function readBody(res: unknown): Promise<string> {
 }
 
 async function readUrl<T>(caller: Caller, url: string): Promise<T | null> {
-  const target = String(url ?? "").trim();
-  if (!isHttpUrl(target)) return null;
+  const target = safeUrl(url);
+  if (!target) return null;
   try {
     const res = await caller(target, {
       method: "GET",
@@ -452,7 +483,7 @@ async function readUrl<T>(caller: Caller, url: string): Promise<T | null> {
     });
     if (!res) return null;
     const status = Number((res as Response).status || 0);
-    if (status >= 400) return null;
+    if (status && status >= 400) return null;
     const parsed = parseLoose<T>(await readBody(res));
     return parsed && payloadScore(parsed) > 0 ? parsed : null;
   } catch {
@@ -476,59 +507,52 @@ function withTimeout<T>(work: Promise<T | null>, ms: number): Promise<T | null> 
   });
 }
 
-function firstStrong<T>(jobs: Array<() => Promise<T | null>>, budget: number): Promise<T | null> {
+async function firstHit<T>(jobs: Array<() => Promise<T | null>>, budget: number): Promise<T | null> {
+  if (!jobs.length) return null;
   return new Promise((resolve) => {
-    if (!jobs.length) {
-      resolve(null);
-      return;
-    }
     let left = jobs.length;
-    let done = false;
-    let weak: T | null = null;
+    let settled = false;
     const finish = (value: T | null) => {
-      if (done) return;
-      done = true;
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve(value);
     };
-    const timer = setTimeout(() => finish(weak), budget);
+    const timer = setTimeout(() => finish(null), budget);
     jobs.forEach((job) => {
-      withTimeout(Promise.resolve().then(job), budget)
-        .then((data) => {
-          if (data && payloadScore(data) >= 3) {
-            finish(data);
-            return;
-          }
-          if (data && !weak) weak = data;
-          left -= 1;
-          if (left <= 0) finish(weak);
-        })
-        .catch(() => {
-          left -= 1;
-          if (left <= 0) finish(weak);
-        });
+      withTimeout(Promise.resolve().then(job), budget).then((data) => {
+        if (data && payloadScore(data) >= 3) {
+          finish(data);
+          return;
+        }
+        left -= 1;
+        if (left <= 0) finish(null);
+      });
     });
   });
 }
 
 function proxyUrls(target: string): string[] {
-  const safe = String(target ?? "").trim();
-  if (!isHttpUrl(safe)) return [];
+  const safe = safeUrl(target);
+  if (!safe) return [];
   const encoded = encodeURIComponent(safe);
   return [
     "https://api.allorigins.win/raw?url=" + encoded,
     "https://api.allorigins.win/get?url=" + encoded,
     "https://corsproxy.io/?" + encoded,
-  ];
+  ].map((url) => safeUrl(url)).filter(Boolean);
 }
 
 function sameOriginApi(path: string): string {
   const clean = cleanPath(path);
-  if (!clean || typeof window === "undefined") return "";
+  if (!clean || typeof window === "undefined" || typeof window.location === "undefined") return "";
   try {
     const loc = window.location;
-    if (!loc || loc.protocol === "file:" || !loc.origin || loc.origin === "null") return "";
-    return String(loc.origin).replace(/\/$/, "") + "/api/pmu?path=" + encodeURIComponent(clean);
+    const protocol = String(loc.protocol || "");
+    const origin = String(loc.origin || "");
+    if (protocol === "file:" || protocol === "capacitor:" || !origin || origin === "null") return "";
+    if (origin.indexOf("http://") !== 0 && origin.indexOf("https://") !== 0) return "";
+    return origin.replace(/\/$/, "") + "/api/pmu?path=" + encodeURIComponent(clean);
   } catch {
     return "";
   }
@@ -539,10 +563,10 @@ function remember(path: string, data: unknown): void {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     const bag = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const next = bag && typeof bag === "object" ? bag : {};
+    const next = bag && typeof bag === "object" ? { ...bag } : {};
     next[path] = data;
     const keys = Object.keys(next);
-    if (keys.length > 40) delete next[keys[0]];
+    if (keys.length > 48) delete next[keys[0]];
     localStorage.setItem(CACHE_KEY, JSON.stringify(next));
   } catch {
     /* cache optionnel */
@@ -570,21 +594,20 @@ async function requestJson<T>(path: string): Promise<T> {
   const primary = urls[0] || "";
   const api = sameOriginApi(clean);
   const jobs: Array<() => Promise<T | null>> = [];
-  for (const url of urls) {
-    for (const caller of active) jobs.push(() => readUrl<T>(caller, url));
-  }
   if (api) {
     for (const caller of active) jobs.push(() => readUrl<T>(caller, api));
+  }
+  for (const url of urls) {
+    for (const caller of active) jobs.push(() => readUrl<T>(caller, url));
   }
   for (const mirror of proxyUrls(primary)) {
     for (const caller of active) jobs.push(() => readUrl<T>(caller, mirror));
   }
-  const found = await firstStrong<T>(jobs, 12000);
+  const found = await firstHit<T>(jobs, 14000);
   if (found && payloadScore(found) >= 3) {
     remember(clean, found);
     return found;
   }
-  if (found && payloadScore(found) > 0) return found;
   const cached = recall<T>(clean);
   if (cached) return cached;
   throw new Error("Le programme PMU ne répond pas depuis cet appareil. Touchez Réessayer.");
@@ -628,7 +651,9 @@ export async function fetchPronostics(date: Date, reunion: number, course: numbe
   if (!path) return [];
   const data = await requestJson<PronosticsResponse | SelectionItem[]>(path);
   const list = Array.isArray(data) ? data : data?.selection || [];
-  return Array.isArray(list) ? [...list].sort((a, b) => (Number(a?.rang) || 99) - (Number(b?.rang) || 99)) : [];
+  return Array.isArray(list)
+    ? [...list].sort((a, b) => (Number(a?.rang) || 99) - (Number(b?.rang) || 99))
+    : [];
 }
 
 export async function fetchCommentaire(date: Date, reunion: number, course: number): Promise<string> {

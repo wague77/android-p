@@ -4,6 +4,7 @@ import ResponsiblePlay from "../components/ResponsiblePlay";
 import { EmptyBlock, ErrorBlock, LoadingBlock } from "../components/StatusMessage";
 import {
   PRONO_TOP,
+  RANGE_DAYS,
   buildReport,
   coteText,
   currentQuinteHorses,
@@ -29,7 +30,7 @@ interface Props {
   loadingProgramme: boolean;
 }
 
-const RANGES: HistoryRange[] = ["1m", "3m", "1y"];
+const RANGES: HistoryRange[] = ["1m", "3m", "1y", "5y"];
 
 export default function HistoriquePage({ reunions, dateValue, loadingProgramme }: Props) {
   const [range, setRange] = useState<HistoryRange>("1m");
@@ -65,9 +66,10 @@ export default function HistoriquePage({ reunions, dateValue, loadingProgramme }
         advice = currentQuinteHorses(Array.isArray(selection) ? selection : [], Array.isArray(parts) ? parts : []);
       }
       const races = await loadHistory(range, date, (done, total) => {
-        setProgress(`${done} / ${total} jours lus · Quintés uniquement`);
+        setProgress(`${done} / ${total} jours lus · Quintés uniquement · top ${PRONO_TOP}`);
       });
-      setReport(buildReport(races, range === "1m" ? 31 : range === "3m" ? 92 : 366, next, advice));
+      const scanned = Number(RANGE_DAYS[range] || 31);
+      setReport(buildReport(races, scanned, next, advice));
     } catch (err) {
       setReport(null);
       setError(err instanceof Error ? String(err.message ?? "") : "Historique indisponible.");
@@ -82,15 +84,15 @@ export default function HistoriquePage({ reunions, dateValue, loadingProgramme }
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 px-4 py-5 pb-8">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">Quinté seulement</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">Quinté seulement · Top 8</p>
         <h1 className="text-2xl font-black text-white">Historique des pronostics</h1>
         <p className="mt-1 text-sm leading-relaxed text-emerald-100/80">
-          Chaque pronostic affiche le top 8. L'analyse ne démarre que lorsque vous la lancez, pour ne
-          pas bloquer le programme du jour.
+          Chaque pronostic affiche le top 8 complet. L'analyse ne démarre que lorsque vous la lancez, pour ne pas
+          bloquer le programme du jour. 5 ans scanne {RANGE_DAYS["5y"]} jours : laissez tourner.
         </p>
       </header>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {RANGES.map((key) => (
           <button
             key={key}
@@ -99,7 +101,7 @@ export default function HistoriquePage({ reunions, dateValue, loadingProgramme }
               setRange(key);
               setReport(null);
             }}
-            className={`min-h-11 flex-1 rounded-full text-sm font-bold ${
+            className={`min-h-11 rounded-full text-sm font-bold ${
               range === key ? "bg-amber-400 text-[#062214]" : "border border-emerald-700 bg-[#0a3320] text-emerald-50"
             }`}
           >
@@ -123,7 +125,7 @@ export default function HistoriquePage({ reunions, dateValue, loadingProgramme }
       {!loading && error ? <ErrorBlock message={error} onRetry={run} /> : null}
 
       {!loading && !report && !error ? (
-        <EmptyBlock message="Choisissez 1 mois, 3 mois ou 1 an, puis touchez Analyser. Le top 8 de chaque Quinté s'affichera avec l'arrivée." />
+        <EmptyBlock message="Choisissez 1 mois, 3 mois, 1 an ou 5 ans, puis touchez Analyser. Le top 8 de chaque Quinté s'affichera avec l'arrivée." />
       ) : null}
 
       {!loading && report ? (
@@ -151,7 +153,8 @@ export default function HistoriquePage({ reunions, dateValue, loadingProgramme }
             </div>
             <p className="mt-3 text-xs leading-relaxed text-emerald-200/70">
               Lecture statistique, pas une garantie. {String(report.quinteDays ?? 0)} course
-              {Number(report.quinteDays) > 1 ? "s" : ""} de Quinté sur {rangeLabel(range)}.
+              {Number(report.quinteDays) > 1 ? "s" : ""} de Quinté sur {rangeLabel(range)} · Pronostic en top{" "}
+              {PRONO_TOP}.
             </p>
           </section>
 
